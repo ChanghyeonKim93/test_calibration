@@ -141,12 +141,12 @@ int main() {
     Eigen::Quaterniond q;
   };
   std::map<int, PoseParameter> pose_param_map;
-  double k1 = -0.2;
+  double k1 = 0.0;
   double k2 = 0.0;
   double fx = 451.5;
-  double fy = 100.0;
-  double cx = 210;
-  double cy = 110;
+  double fy = 200.0;
+  double cx = 300;
+  double cy = 200;
   for (auto& frame : frame_list) {
     pose_param_map.insert(
         {static_cast<size_t>(frame.id),
@@ -172,7 +172,7 @@ int main() {
     ceres_problem.SetParameterization(
         q.coeffs().data(), new ceres::EigenQuaternionParameterization());
   }
-  // ceres_problem.SetParameterBlockConstant(&fx);
+  ceres_problem.SetParameterBlockConstant(&fx);
   // ceres_problem.SetParameterBlockConstant(&fy);
   // ceres_problem.SetParameterBlockConstant(&cx);
   // ceres_problem.SetParameterBlockConstant(&cy);
