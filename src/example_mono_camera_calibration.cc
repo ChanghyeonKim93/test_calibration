@@ -61,6 +61,16 @@ std::vector<Pose> GenerateBaselinkPoseList() {
 }
 
 int main() {
+  // User parameters
+  struct Parameters {
+    bool fix_focal_length{false};
+    // bool use_tangential_distortion{false};
+  };
+
+  Parameters parameters;
+  parameters.fix_focal_length = true;
+  // parameters.use_tangential_distortion = true;
+
   // Generate simulation data
   const auto true_point_map = GenerateBoardPointMap();
   const auto true_camera_map = GenerateCameraMap();
@@ -232,11 +242,14 @@ int main() {
       param_map_for_camera_parameter.at(0).t.data());
   ceres_problem.SetParameterBlockConstant(
       param_map_for_camera_parameter.at(0).q.coeffs().data());
-  for (auto& [camera_id, camera_parameter] : param_map_for_camera_parameter) {
-    ceres::SubsetParameterization* subset_parameterization =
-        new ceres::SubsetParameterization(4, {0});
-    ceres_problem.SetParameterization(camera_parameter.intrinsic,
-                                      subset_parameterization);
+
+  if (parameters.fix_focal_length) {
+    for (auto& [camera_id, camera_parameter] : param_map_for_camera_parameter) {
+      ceres::SubsetParameterization* subset_parameterization =
+          new ceres::SubsetParameterization(4, {0});
+      ceres_problem.SetParameterization(camera_parameter.intrinsic,
+                                        subset_parameterization);
+    }
   }
 
   // Use parametrization

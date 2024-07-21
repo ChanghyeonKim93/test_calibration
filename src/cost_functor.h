@@ -39,13 +39,13 @@ class DistortedReprojectionErrorCostFunctor {
     }
 
     T inverse_z = T(1.0) / warped_point.z();
-    T image_coordinate_x = warped_point.x() * inverse_z;
-    T image_coordinate_y = warped_point.y() * inverse_z;
+    T undistorted_x = warped_point.x() * inverse_z;  // image cooridnate
+    T undistorted_y = warped_point.y() * inverse_z;  // image cooridnate
 
-    T squared_x = image_coordinate_x * image_coordinate_x;
-    T squared_y = image_coordinate_y * image_coordinate_y;
-    T xy = image_coordinate_x * image_coordinate_y;
-    T squared_r = squared_x + squared_y;
+    T xx = undistorted_x * undistorted_x;
+    T yy = undistorted_y * undistorted_y;
+    T xy = undistorted_x * undistorted_y;
+    T squared_r = xx + yy;
 
     T fx = intrinsic_parameter_ptr[0];
     T fy = intrinsic_parameter_ptr[1];
@@ -59,13 +59,13 @@ class DistortedReprojectionErrorCostFunctor {
     T radial_distortion_factor =
         T(1.0) + k1 * squared_r + k2 * squared_r * squared_r;
     T tangential_distortion_factor_x =
-        T(2.0) * p1 * xy + p2 * (squared_r + T(2.0) * squared_x);
+        T(2.0) * p1 * xy + p2 * (squared_r + T(2.0) * xx);
     T tangential_distortion_factor_y =
-        T(2.0) * p2 * xy + p1 * (squared_r + T(2.0) * squared_y);
+        T(2.0) * p2 * xy + p1 * (squared_r + T(2.0) * yy);
 
-    T distorted_x = image_coordinate_x * radial_distortion_factor +
+    T distorted_x = undistorted_x * radial_distortion_factor +
                     tangential_distortion_factor_x;
-    T distorted_y = image_coordinate_y * radial_distortion_factor +
+    T distorted_y = undistorted_y * radial_distortion_factor +
                     tangential_distortion_factor_y;
     residual_ptr[0] = fx * distorted_x + cx - T(distorted_pixel_.x());
     residual_ptr[1] = fy * distorted_y + cy - T(distorted_pixel_.y());
