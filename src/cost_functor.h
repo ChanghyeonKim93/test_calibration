@@ -11,36 +11,53 @@ class DistortedReprojectionErrorCostFunctor {
       : distorted_pixel_(distorted_pixel) {}
 
   template <typename T>
-  bool operator()(const T* const translation_ptr, const T* const quaternion_ptr,
-                  const T* const point_ptr, const T* const k1_ptr,
-                  const T* const k2_ptr, const T* const fx_ptr,
-                  const T* const fy_ptr, const T* const cx_ptr,
-                  const T* const cy_ptr, T* residual_ptr) const {
-    Eigen::Map<const Eigen::Matrix<T, 3, 1>> t(translation_ptr);
-    Eigen::Map<const Eigen::Quaternion<T>> q(quaternion_ptr);
+  bool operator()(const T* const baselink_translation_ptr,
+                  const T* const baselink_quaternion_ptr,
+                  const T* const relative_translation_from_baselink_ptr,
+                  const T* const relative_quaternion_from_baselink_ptr,
+                  const T* const point_ptr,
+                  const T* const intrinsic_parameter_ptr,
+                  const T* const distortion_parameter_ptr,
+                  T* residual_ptr) const {
+    if (!residual_ptr) return false;
+
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> baselink_t(
+        baselink_translation_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> baselink_q(baselink_quaternion_ptr);
+    Eigen::Map<const Eigen::Matrix<T, 3, 1>> camera_t(
+        relative_translation_from_baselink_ptr);
+    Eigen::Map<const Eigen::Quaternion<T>> camera_q(
+        relative_quaternion_from_baselink_ptr);
     Eigen::Map<const Eigen::Matrix<T, 3, 1>> X(point_ptr);
 
-    Eigen::Matrix<T, 3, 1> warped_point = q * X + t;
+    Eigen::Matrix<T, 3, 1> warped_point =
+        camera_q * (baselink_q * X + baselink_t) + camera_t;
 
-    if (warped_point.z() < T(0.01)) return false;
-
-    Eigen::Matrix<T, 3, 1> image_coordinate;
-    image_coordinate.x() = warped_point.x() / warped_point.z();
-    image_coordinate.y() = warped_point.y() / warped_point.z();
-    image_coordinate.z() = T(1.0);
-
-    T r2 = image_coordinate.x() * image_coordinate.x() +
-           image_coordinate.y() * image_coordinate.y();
-
-    T D = T(1.0) + *k1_ptr * r2 + *k2_ptr * r2 * r2;
-
-    if (!residual_ptr) {
+    if (warped_point.z() < T(0.01)) {
+      std::cerr << "point is not front of the camera\n";
       return false;
     }
-    residual_ptr[0] =
-        *fx_ptr * image_coordinate.x() / D + *cx_ptr - T(distorted_pixel_.x());
-    residual_ptr[1] =
-        *fy_ptr * image_coordinate.y() / D + *cy_ptr - T(distorted_pixel_.y());
+
+    T inverse_z = T(1.0) / warped_point.z();
+    T image_coordinate_x = warped_point.x() * inverse_z;
+    T image_coordinate_y = warped_point.y() * inverse_z;
+
+    T r2 = image_coordinate_x * image_coordinate_x +
+           image_coordinate_y * image_coordinate_y;
+
+    T fx = intrinsic_parameter_ptr[0];
+    T fy = intrinsic_parameter_ptr[1];
+    T cx = intrinsic_parameter_ptr[2];
+    T cy = intrinsic_parameter_ptr[3];
+    T k1 = distortion_parameter_ptr[0];
+    T k2 = distortion_parameter_ptr[1];
+
+    T radial_distortion_factor = T(1.0) + k1 * r2 + k2 * r2 * r2;
+
+    residual_ptr[0] = fx * image_coordinate_x * radial_distortion_factor + cx -
+                      T(distorted_pixel_.x());
+    residual_ptr[1] = fy * image_coordinate_y * radial_distortion_factor + cy -
+                      T(distorted_pixel_.y());
 
     return true;
   }
@@ -50,17 +67,12 @@ class DistortedReprojectionErrorCostFunctor {
     constexpr int kDimTranslation = 3;
     constexpr int kDimQuaternion = 4;
     constexpr int kDimPoint = 3;
-    constexpr int kDimRadialDistortionK1 = 1;
-    constexpr int kDimRadialDistortionK2 = 1;
-    constexpr int kDimFocalLengthX = 1;
-    constexpr int kDimFocalLengthY = 1;
-    constexpr int kDimImageCenterX = 1;
-    constexpr int kDimImageCenterY = 1;
+    constexpr int kDimIntrinsicParameter = 4;
+    constexpr int kDimDistortionParameter = 2;
     return new ceres::AutoDiffCostFunction<
         DistortedReprojectionErrorCostFunctor, kDimResidual, kDimTranslation,
-        kDimQuaternion, kDimPoint, kDimRadialDistortionK1,
-        kDimRadialDistortionK2, kDimFocalLengthX, kDimFocalLengthY,
-        kDimImageCenterX, kDimImageCenterY>(
+        kDimQuaternion, kDimTranslation, kDimQuaternion, kDimPoint,
+        kDimIntrinsicParameter, kDimDistortionParameter>(
         new DistortedReprojectionErrorCostFunctor(distorted_pixel));
   }
 

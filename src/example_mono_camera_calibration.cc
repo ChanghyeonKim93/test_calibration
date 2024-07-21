@@ -1,122 +1,183 @@
 #include <iostream>
-#include <map>
-#include <vector>
+#include <random>
+#include <stdexcept>
 
 #include "Eigen/Dense"
 
 #include "cost_functor.h"
+#include "types.h"
+#include "utilities.h"
 
-using Pose = Eigen::Isometry3d;
-using Mat3x3 = Eigen::Matrix3d;
-using Vec2 = Eigen::Vector2d;
-using Vec3 = Eigen::Vector3d;
+namespace {
 
-struct Observation {
-  size_t id{0};
-  Vec2 distorted_pixel;
-};
+std::random_device rd;
+std::uniform_real_distribution uniform_dist(0.0, 1.0);
 
-struct Frame {
-  int id{-1};
-  Pose inverse_pose{Pose::Identity()};
-  std::vector<Observation> observation_list;
-};
+};  // namespace
 
-inline bool IsInImage(const Vec2& pixel, const int height, const int width) {
-  return (pixel.x() >= 0.0 && pixel.x() < width && pixel.y() >= 0.0 &&
-          pixel.y() < height);
+std::map<int, Vec3> GenerateBoardPointMap() {
+  std::map<int, Vec3> board_point_map{
+      {0, {0.0, 0.0, 0.0}}, {1, {0.0, 0.1, 0.0}}, {2, {0.0, 0.2, 0.0}},
+      {3, {0.1, 0.0, 0.0}}, {4, {0.1, 0.1, 0.0}}, {5, {0.1, 0.2, 0.0}},
+      {6, {0.2, 0.0, 0.0}}, {7, {0.2, 0.1, 0.0}}, {8, {0.2, 0.2, 0.0}}};
+  return board_point_map;
 }
 
-Vec2 ProjectToPixelCoordinate(const Vec3& point, const double fx,
-                              const double fy, const double cx,
-                              const double cy) {
-  const double inverse_z = 1.0 / point.z();
-  Vec2 pixel;
-  pixel.x() = fx * point.x() * inverse_z + cx;
-  pixel.y() = fy * point.y() * inverse_z + cy;
-  return pixel;
-}
+std::map<int, CameraPtr> GenerateCameraMap() {
+  std::map<int, CameraPtr> camera_map;
+  CameraPtr camera_0_ptr = std::make_shared<Camera>();
+  camera_0_ptr->id = 0;
+  camera_0_ptr->image_height = 480;
+  camera_0_ptr->image_width = 640;
+  camera_0_ptr->intrinsic_parameter[0] = 451.5;   // fx
+  camera_0_ptr->intrinsic_parameter[1] = 452.3;   // fy
+  camera_0_ptr->intrinsic_parameter[2] = 320.4;   // cx
+  camera_0_ptr->intrinsic_parameter[3] = 240.7;   // cy
+  camera_0_ptr->distortion_parameter[0] = -0.21;  // k1
+  camera_0_ptr->distortion_parameter[1] = 0.04;   // k2
+  camera_0_ptr->extrinsic_pose.setIdentity();
+  camera_map.insert({camera_0_ptr->id, camera_0_ptr});
 
-Vec2 ProjectToDistortedPixel(const Vec3& point, const double fx,
-                             const double fy, const double cx, const double cy,
-                             const double k1, const double k2) {
-  Vec3 image_coordinate;
-  image_coordinate.x() = point.x() / point.z();
-  image_coordinate.y() = point.y() / point.z();
-  image_coordinate.z() = 1.0;
-  const double xu = image_coordinate.x();
-  const double yu = image_coordinate.y();
-  const double r2 = xu * xu + yu * yu;
-  const double D = 1.0 + k1 * r2 + k2 * r2 * r2;
-  const double inv_D = 1.0 / D;
-  const double xd = xu * inv_D;
-  const double yd = yu * inv_D;
-  Vec2 distorted_pixel{fx * xd + cx, fy * yd + cy};
-  return distorted_pixel;
+  return camera_map;
+};
+
+std::vector<Pose> GenerateBaselinkPoseList() {
+  constexpr size_t kNumPose{10};
+
+  Pose baselink_pose{Pose::Identity()};
+  baselink_pose.translation().x() = -1.0;
+  baselink_pose.translation().z() = -2.0;
+
+  std::vector<Pose> baselink_pose_list;
+  baselink_pose_list.push_back(baselink_pose);
+  for (size_t i = 1; i < kNumPose; ++i) {
+    baselink_pose.translation().x() += 0.2;
+    baselink_pose.translation().y() += 0.05;
+    baselink_pose_list.push_back(baselink_pose);
+  }
+  return baselink_pose_list;
 }
 
 int main() {
-  constexpr size_t kNumPose = 10;
-  constexpr int kImageWidth = 640;
-  constexpr int kImageHeight = 480;
-  constexpr double kFx = 451.5;
-  constexpr double kFy = 452.3;
-  constexpr double kCx = kImageWidth * 0.5 + 0.4;
-  constexpr double kCy = kImageHeight * 0.5 - 0.7;
-  constexpr double kK1 = -0.28340811;
-  constexpr double kK2 = 0.07395907;
-
-  std::vector<Vec3> point_list;
-  point_list.push_back({0.0, 0.0, 0.0});
-  point_list.push_back({0.0, 0.1, 0.0});
-  point_list.push_back({0.0, 0.2, 0.0});
-  point_list.push_back({0.1, 0.0, 0.0});
-  point_list.push_back({0.1, 0.1, 0.0});
-  point_list.push_back({0.1, 0.2, 0.0});
-  point_list.push_back({0.2, 0.0, 0.0});
-  point_list.push_back({0.2, 0.1, 0.0});
-  point_list.push_back({0.2, 0.2, 0.0});
-
-  Pose pose{Pose::Identity()};
-  pose.translation().x() = -1.0;
-  pose.translation().z() = -2.0;
-
-  std::vector<Pose> pose_list;
-  pose_list.push_back(pose);
-  for (size_t i = 1; i < kNumPose; ++i) {
-    pose.translation().x() += 0.2;
-    pose.translation().y() += 0.1;
-    pose_list.push_back(pose);
+  // Generate simulation data
+  const auto true_point_map = GenerateBoardPointMap();
+  const auto true_camera_map = GenerateCameraMap();
+  const auto true_baselink_pose_list = GenerateBaselinkPoseList();
+  std::map<int, Baselink> true_baselink_map;
+  for (size_t baselink_id = 0; baselink_id < true_baselink_pose_list.size();
+       ++baselink_id) {
+    const auto& pose = true_baselink_pose_list.at(baselink_id);
+    Baselink baselink;
+    baselink.id = baselink_id;
+    baselink.timestamp = baselink_id * 0.1;
+    baselink.pose = pose;
+    baselink.camera_frame_map.insert({0, {0, true_camera_map.at(0), {}}});
+    true_baselink_map.insert({baselink_id, baselink});
   }
+  for (auto& [baselink_id, baselink] : true_baselink_map) {
+    const Pose& baselink_pose = baselink.pose;
+    for (auto& [frame_id, camera_frame] : baselink.camera_frame_map) {
+      const auto& camera_ptr = camera_frame.camera_ptr;
+      for (const auto& [point_id, true_point] : true_point_map) {
+        const auto warped_point = camera_ptr->extrinsic_pose.inverse() *
+                                  baselink_pose.inverse() * true_point;
+        if (warped_point.z() < 0.01) continue;
+        const auto distorted_projected_pixel =
+            ProjectToDistortedPixel(warped_point, camera_ptr);
+        if (!IsInImage(distorted_projected_pixel, camera_ptr->image_height,
+                       camera_ptr->image_width))
+          continue;
 
-  // Generate frame lise
-  std::vector<Frame> frame_list;
-  for (size_t index = 0; index < kNumPose; ++index) {
-    const auto& pose = pose_list.at(index);
-    Frame frame;
-    frame.id = index;
-    frame.inverse_pose = pose.inverse();
-    frame_list.push_back(frame);
-  }
-
-  // Project point
-  for (auto& frame : frame_list) {
-    for (size_t point_index = 0; point_index < point_list.size();
-         ++point_index) {
-      const auto& point = point_list.at(point_index);
-      const auto warped_point = frame.inverse_pose * point;
-      if (warped_point.z() < 0.1) continue;
-      const auto distorted_projected_pixel =
-          ProjectToDistortedPixel(warped_point, kFx, kFy, kCx, kCy, kK1, kK2);
-      if (!IsInImage(distorted_projected_pixel, kImageHeight, kImageWidth))
-        continue;
-      Observation observation{point_index, distorted_projected_pixel};
-      frame.observation_list.push_back(observation);
+        Observation observation{point_id, distorted_projected_pixel};
+        camera_frame.observation_list.push_back(observation);
+      }
+      std::cerr << "baselink_id, frame_id : " << baselink_id << ", " << frame_id
+                << "-> num observation: "
+                << camera_frame.observation_list.size() << std::endl;
     }
+  }
 
-    std::cerr << "Id: " << frame.id
-              << ", num observation: " << frame.observation_list.size()
-              << std::endl;
+  // Initialization realistic data
+  // Note: intentionally distort values
+  std::map<int, Vec3> point_map;
+  for (const auto& [point_id, true_point] : true_point_map) {
+    Vec3 point = true_point;
+    point.x() += uniform_dist(rd) * 0.05;
+    point.y() += uniform_dist(rd) * 0.05;
+    point.z() += uniform_dist(rd) * 0.1;
+    point_map.insert({point_id, point});
+  }
+
+  std::map<int, CameraPtr> camera_map;
+  for (const auto& [camera_id, true_camera_ptr] : true_camera_map) {
+    CameraPtr camera_ptr = std::make_shared<Camera>(*true_camera_ptr);
+    camera_ptr->extrinsic_pose.setIdentity();
+    // camera_ptr->intrinsic_parameter[0] += uniform_dist(rd) * 10.0;
+    camera_ptr->intrinsic_parameter[1] += uniform_dist(rd) * 10.0;
+    camera_ptr->intrinsic_parameter[2] += uniform_dist(rd) * 5.0;
+    camera_ptr->intrinsic_parameter[3] += uniform_dist(rd) * 5.0;
+    camera_ptr->distortion_parameter[0] = 0.0;
+    camera_ptr->distortion_parameter[1] = 0.0;
+    camera_map.insert({camera_id, camera_ptr});
+  }
+
+  std::map<int, Baselink> baselink_map;
+  for (const auto& [baselink_id, true_baselink] : true_baselink_map) {
+    Baselink baselink;
+    baselink = true_baselink;
+    if (baselink_id != 0) {
+      Pose random_deviation{Pose::Identity()};
+      random_deviation.translation().x() += uniform_dist(rd) * 0.05;
+      random_deviation.translation().y() += uniform_dist(rd) * 0.05;
+      random_deviation.translation().z() += uniform_dist(rd) * 0.05;
+      random_deviation.linear() =
+          Quaternion(1.0, uniform_dist(rd) * 0.05, uniform_dist(rd) * 0.05,
+                     uniform_dist(rd) * 0.05)
+              .normalized()
+              .toRotationMatrix();
+      baselink.pose = baselink.pose * random_deviation;
+    }
+    baselink_map.insert({baselink_id, baselink});
+  }
+
+  // Generate parameter map for optimization
+  using PointParameter = Vec3;
+  struct PoseParameter {
+    Vec3 t;
+    Quaternion q;
+  };
+  struct CameraParameter {
+    double intrinsic[4];
+    double distortion[2];
+    Vec3 t;
+    Quaternion q;
+  };
+  std::map<int, PointParameter> param_map_for_point;
+  for (const auto& [point_id, point] : point_map) {
+    param_map_for_point.insert({point_id, point});
+  }
+
+  std::map<int, PoseParameter> param_map_for_baselink_pose;
+  for (const auto& [baselink_id, baselink] : baselink_map) {
+    const Pose inverse_pose = baselink.pose.inverse();
+    param_map_for_baselink_pose.insert(
+        {baselink_id,
+         {inverse_pose.translation(),
+          Quaternion(inverse_pose.rotation()).normalized()}});
+  }
+
+  std::map<int, CameraParameter> param_map_for_camera_parameter;
+  for (const auto& [camera_id, camera_ptr] : camera_map) {
+    CameraParameter camera_param;
+    for (int i = 0; i < 4; ++i)
+      camera_param.intrinsic[i] = camera_ptr->intrinsic_parameter[i];
+    for (int i = 0; i < 2; ++i)
+      camera_param.distortion[i] = camera_ptr->distortion_parameter[i];
+
+    const Pose inverse_pose = camera_ptr->extrinsic_pose.inverse();
+    camera_param.t = inverse_pose.translation();
+    camera_param.q = Quaternion(inverse_pose.rotation()).normalized();
+    param_map_for_camera_parameter.insert({camera_id, camera_param});
   }
 
   // Optimize
@@ -128,57 +189,85 @@ int main() {
   ceres::Solver::Summary summary;
   ceres::Problem ceres_problem;
 
-  struct PoseParameter {
-    Eigen::Vector3d t;
-    Eigen::Quaterniond q;
-  };
-  std::map<int, PoseParameter> pose_param_map;
-  double k1 = 0.0;
-  double k2 = 0.0;
-  double fx = 451.5;
-  double fy = 200.0;
-  double cx = 300;
-  double cy = 200;
-  for (auto& frame : frame_list) {
-    pose_param_map.insert(
-        {static_cast<size_t>(frame.id),
-         {frame.inverse_pose.translation(),
-          Eigen::Quaterniond(frame.inverse_pose.rotation())}});
+  // Add cost functor for each observation
+  for (auto& [baselink_id, baselink] : baselink_map) {
+    auto& baselink_t = param_map_for_baselink_pose.at(baselink_id).t;
+    auto& baselink_q = param_map_for_baselink_pose.at(baselink_id).q;
+    for (auto& [frame_id, camera_frame] : baselink.camera_frame_map) {
+      const CameraPtr& camera_ptr = camera_frame.camera_ptr;
+      auto& camera_extrinsic_t =
+          param_map_for_camera_parameter.at(camera_ptr->id).t;
+      auto& camera_extrinsic_q =
+          param_map_for_camera_parameter.at(camera_ptr->id).q;
+      auto& intrinsics =
+          param_map_for_camera_parameter.at(camera_ptr->id).intrinsic;
+      auto& distortions =
+          param_map_for_camera_parameter.at(camera_ptr->id).distortion;
+      for (const auto& [point_id, distorted_pixel] :
+           camera_frame.observation_list) {
+        auto& point = param_map_for_point.at(point_id);
+        ceres::CostFunction* cost_function =
+            DistortedReprojectionErrorCostFunctor::Create(distorted_pixel);
+        ceres::LossFunction* loss_function = nullptr;
+        ceres_problem.AddResidualBlock(
+            cost_function, loss_function, baselink_t.data(),
+            baselink_q.coeffs().data(), camera_extrinsic_t.data(),
+            camera_extrinsic_q.coeffs().data(), point.data(), intrinsics,
+            distortions);
+      }
+    }
   }
-  for (auto& frame : frame_list) {
-    auto& t = pose_param_map.at(frame.id).t;
-    auto& q = pose_param_map.at(frame.id).q;
-    for (const auto& [point_index, distorted_pixel] : frame.observation_list) {
-      auto& point = point_list.at(point_index);
-      ceres::CostFunction* cost_function =
-          DistortedReprojectionErrorCostFunctor::Create(distorted_pixel);
-      ceres::LossFunction* loss_function = nullptr;
-      ceres_problem.AddResidualBlock(cost_function, loss_function, t.data(),
-                                     q.coeffs().data(), point.data(), &k1, &k2,
-                                     &fx, &fy, &cx, &cy);
-    }
-    if (frame.id == 0) {
-      ceres_problem.SetParameterBlockConstant(t.data());
-      ceres_problem.SetParameterBlockConstant(q.coeffs().data());
-    }
+
+  // Fix some parameters
+  ceres_problem.SetParameterBlockConstant(
+      param_map_for_baselink_pose.at(0).t.data());
+  ceres_problem.SetParameterBlockConstant(
+      param_map_for_baselink_pose.at(0).q.coeffs().data());
+  ceres_problem.SetParameterBlockConstant(
+      param_map_for_camera_parameter.at(0).t.data());
+  ceres_problem.SetParameterBlockConstant(
+      param_map_for_camera_parameter.at(0).q.coeffs().data());
+  for (auto& [camera_id, camera_parameter] : param_map_for_camera_parameter) {
+    ceres::SubsetParameterization* subset_parameterization =
+        new ceres::SubsetParameterization(4, {0});
+    ceres_problem.SetParameterization(camera_parameter.intrinsic,
+                                      subset_parameterization);
+  }
+
+  // Use parametrization
+  for (auto& [baselink_id, baselink_param] : param_map_for_baselink_pose) {
     ceres_problem.SetParameterization(
-        q.coeffs().data(), new ceres::EigenQuaternionParameterization());
+        baselink_param.q.coeffs().data(),
+        new ceres::EigenQuaternionParameterization());
   }
-  ceres_problem.SetParameterBlockConstant(&fx);
-  // ceres_problem.SetParameterBlockConstant(&fy);
-  // ceres_problem.SetParameterBlockConstant(&cx);
-  // ceres_problem.SetParameterBlockConstant(&cy);
+  for (auto& [camera_id, camera_parameter] : param_map_for_camera_parameter) {
+    ceres_problem.SetParameterization(
+        camera_parameter.q.coeffs().data(),
+        new ceres::EigenQuaternionParameterization());
+  }
 
   ceres::Solve(options, &ceres_problem, &summary);
+
+  // Show the results
   std::cerr << summary.FullReport() << std::endl;
 
-  std::cerr << "[True] fx,fy,cx,cy : " << kFx << ", " << kFy << ", " << kCx
-            << ", " << kCy << std::endl;
-  std::cerr << "[Est ] fx,fy,cx,cy : " << fx << ", " << fy << ", " << cx << ", "
-            << cy << std::endl;
+  std::cerr << "[True] fx,fy,cx,cy : "
+            << true_camera_map.at(0)->intrinsic_parameter[0] << ","
+            << true_camera_map.at(0)->intrinsic_parameter[1] << ","
+            << true_camera_map.at(0)->intrinsic_parameter[2] << ","
+            << true_camera_map.at(0)->intrinsic_parameter[3] << std::endl;
+  std::cerr << "[Est ] fx,fy,cx,cy : "
+            << param_map_for_camera_parameter.at(0).intrinsic[0] << ","
+            << param_map_for_camera_parameter.at(0).intrinsic[1] << ","
+            << param_map_for_camera_parameter.at(0).intrinsic[2] << ","
+            << param_map_for_camera_parameter.at(0).intrinsic[3] << std::endl;
 
-  std::cerr << "[True] k1,k2: " << kK1 << ", " << kK2 << std::endl;
-  std::cerr << "[Est ] k1,k2: " << k1 << ", " << k2 << std::endl;
+  std::cerr << "[True] k1,k2: "
+            << true_camera_map.at(0)->distortion_parameter[0] << ", "
+            << true_camera_map.at(0)->distortion_parameter[1] << std::endl;
+  std::cerr << "[Est ] k1,k2: "
+            << param_map_for_camera_parameter.at(0).distortion[0] << ", "
+            << param_map_for_camera_parameter.at(0).distortion[1] << std::endl;
 
   return 0;
 }
