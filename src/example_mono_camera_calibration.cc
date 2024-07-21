@@ -35,6 +35,8 @@ std::map<int, CameraPtr> GenerateCameraMap() {
   camera_0_ptr->intrinsic_parameter[3] = 240.7;   // cy
   camera_0_ptr->distortion_parameter[0] = -0.21;  // k1
   camera_0_ptr->distortion_parameter[1] = 0.04;   // k2
+  camera_0_ptr->distortion_parameter[2] = 0.0;    // p1
+  camera_0_ptr->distortion_parameter[3] = 0.0;    // p2
   camera_0_ptr->extrinsic_pose.setIdentity();
   camera_map.insert({camera_0_ptr->id, camera_0_ptr});
 
@@ -118,6 +120,8 @@ int main() {
     camera_ptr->intrinsic_parameter[3] += uniform_dist(rd) * 5.0;
     camera_ptr->distortion_parameter[0] = 0.0;
     camera_ptr->distortion_parameter[1] = 0.0;
+    camera_ptr->distortion_parameter[2] = 0.0;
+    camera_ptr->distortion_parameter[3] = 0.0;
     camera_map.insert({camera_id, camera_ptr});
   }
 
@@ -148,7 +152,7 @@ int main() {
   };
   struct CameraParameter {
     double intrinsic[4];
-    double distortion[2];
+    double distortion[4];
     Vec3 t;
     Quaternion q;
   };
@@ -171,7 +175,8 @@ int main() {
     CameraParameter camera_param;
     for (int i = 0; i < 4; ++i)
       camera_param.intrinsic[i] = camera_ptr->intrinsic_parameter[i];
-    for (int i = 0; i < 2; ++i)
+
+    for (int i = 0; i < 4; ++i)
       camera_param.distortion[i] = camera_ptr->distortion_parameter[i];
 
     const Pose inverse_pose = camera_ptr->extrinsic_pose.inverse();
@@ -262,12 +267,16 @@ int main() {
             << param_map_for_camera_parameter.at(0).intrinsic[2] << ","
             << param_map_for_camera_parameter.at(0).intrinsic[3] << std::endl;
 
-  std::cerr << "[True] k1,k2: "
+  std::cerr << "[True] k1,k2,p1,p2: "
             << true_camera_map.at(0)->distortion_parameter[0] << ", "
-            << true_camera_map.at(0)->distortion_parameter[1] << std::endl;
-  std::cerr << "[Est ] k1,k2: "
+            << true_camera_map.at(0)->distortion_parameter[1] << ", "
+            << true_camera_map.at(0)->distortion_parameter[2] << ", "
+            << true_camera_map.at(0)->distortion_parameter[3] << std::endl;
+  std::cerr << "[Est ] k1,k2,p1,p2: "
             << param_map_for_camera_parameter.at(0).distortion[0] << ", "
-            << param_map_for_camera_parameter.at(0).distortion[1] << std::endl;
+            << param_map_for_camera_parameter.at(0).distortion[1] << ", "
+            << param_map_for_camera_parameter.at(0).distortion[2] << ", "
+            << param_map_for_camera_parameter.at(0).distortion[3] << std::endl;
 
   return 0;
 }

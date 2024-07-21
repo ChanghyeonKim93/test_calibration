@@ -23,7 +23,7 @@ struct Camera {
   int image_height{-1};
   int image_width{-1};
   double intrinsic_parameter[4] = {-1.0};   // fx fy cx cy
-  double distortion_parameter[2] = {-1.0};  // k1 k2
+  double distortion_parameter[4] = {-1.0};  // k1 k2 p1 p2
   Pose extrinsic_pose{Pose::Identity()};
 };
 using CameraPtr = std::shared_ptr<Camera>;

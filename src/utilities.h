@@ -21,7 +21,8 @@ inline bool IsInImage(const Vec2& pixel, const int image_height,
 
 Vec2 ProjectToDistortedPixel(const Vec3& point, const double fx,
                              const double fy, const double cx, const double cy,
-                             const double k1, const double k2) {
+                             const double k1, const double k2, const double p1,
+                             const double p2) {
   constexpr double kMinDepth{0.01};  // [m]
   if (point.z() < kMinDepth)
     throw std::invalid_argument("point.z() < kMinDepth");
@@ -36,14 +37,16 @@ Vec2 ProjectToDistortedPixel(const Vec3& point, const double fx,
   const double squared_r = squared_xu + squared_yu;
   const double radial_distortion_factor =
       1.0 + k1 * squared_r + k2 * squared_r * squared_r;
-  // const double tangential_distortion_factor_x =
-  //     2.0 * p1 * xuyu + p2 * (squared_r + 2.0 * squared_xu);
-  // const double tangential_distortion_factor_y =
-  //     2.0 * p2 * xuyu + p1 * (squared_r + 2.0 * squared_yu);
+  const double tangential_distortion_factor_x =
+      2.0 * p1 * xuyu + p2 * (squared_r + 2.0 * squared_xu);
+  const double tangential_distortion_factor_y =
+      2.0 * p2 * xuyu + p1 * (squared_r + 2.0 * squared_yu);
   const double xd =
-      xu * radial_distortion_factor;  // distorted image coordinate x
+      xu * radial_distortion_factor +
+      tangential_distortion_factor_x;  // distorted image coordinate x
   const double yd =
-      yu * radial_distortion_factor;  // distorted image coordinate y
+      yu * radial_distortion_factor +
+      tangential_distortion_factor_y;  // distorted image coordinate y
   const Vec2 distorted_pixel{fx * xd + cx, fy * yd + cy};
 
   return distorted_pixel;
@@ -59,8 +62,10 @@ Vec2 ProjectToDistortedPixel(const Vec3& point, const CameraPtr& camera_ptr) {
   const double cy = camera_ptr->intrinsic_parameter[3];
   const double k1 = camera_ptr->distortion_parameter[0];
   const double k2 = camera_ptr->distortion_parameter[1];
+  const double p1 = camera_ptr->distortion_parameter[2];
+  const double p2 = camera_ptr->distortion_parameter[3];
 
-  return ProjectToDistortedPixel(point, fx, fy, cx, cy, k1, k2);
+  return ProjectToDistortedPixel(point, fx, fy, cx, cy, k1, k2, p1, p2);
 }
 
 #endif  // UTILITIES_H_

@@ -42,8 +42,10 @@ class DistortedReprojectionErrorCostFunctor {
     T image_coordinate_x = warped_point.x() * inverse_z;
     T image_coordinate_y = warped_point.y() * inverse_z;
 
-    T r2 = image_coordinate_x * image_coordinate_x +
-           image_coordinate_y * image_coordinate_y;
+    T squared_x = image_coordinate_x * image_coordinate_x;
+    T squared_y = image_coordinate_y * image_coordinate_y;
+    T xy = image_coordinate_x * image_coordinate_y;
+    T squared_r = squared_x + squared_y;
 
     T fx = intrinsic_parameter_ptr[0];
     T fy = intrinsic_parameter_ptr[1];
@@ -51,13 +53,22 @@ class DistortedReprojectionErrorCostFunctor {
     T cy = intrinsic_parameter_ptr[3];
     T k1 = distortion_parameter_ptr[0];
     T k2 = distortion_parameter_ptr[1];
+    T p1 = distortion_parameter_ptr[2];
+    T p2 = distortion_parameter_ptr[3];
 
-    T radial_distortion_factor = T(1.0) + k1 * r2 + k2 * r2 * r2;
+    T radial_distortion_factor =
+        T(1.0) + k1 * squared_r + k2 * squared_r * squared_r;
+    T tangential_distortion_factor_x =
+        T(2.0) * p1 * xy + p2 * (squared_r + T(2.0) * squared_x);
+    T tangential_distortion_factor_y =
+        T(2.0) * p2 * xy + p1 * (squared_r + T(2.0) * squared_y);
 
-    residual_ptr[0] = fx * image_coordinate_x * radial_distortion_factor + cx -
-                      T(distorted_pixel_.x());
-    residual_ptr[1] = fy * image_coordinate_y * radial_distortion_factor + cy -
-                      T(distorted_pixel_.y());
+    T distorted_x = image_coordinate_x * radial_distortion_factor +
+                    tangential_distortion_factor_x;
+    T distorted_y = image_coordinate_y * radial_distortion_factor +
+                    tangential_distortion_factor_y;
+    residual_ptr[0] = fx * distorted_x + cx - T(distorted_pixel_.x());
+    residual_ptr[1] = fy * distorted_y + cy - T(distorted_pixel_.y());
 
     return true;
   }
@@ -68,7 +79,7 @@ class DistortedReprojectionErrorCostFunctor {
     constexpr int kDimQuaternion = 4;
     constexpr int kDimPoint = 3;
     constexpr int kDimIntrinsicParameter = 4;
-    constexpr int kDimDistortionParameter = 2;
+    constexpr int kDimDistortionParameter = 4;
     return new ceres::AutoDiffCostFunction<
         DistortedReprojectionErrorCostFunctor, kDimResidual, kDimTranslation,
         kDimQuaternion, kDimTranslation, kDimQuaternion, kDimPoint,
