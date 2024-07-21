@@ -27,14 +27,6 @@ inline bool IsInImage(const Vec2& pixel, const int height, const int width) {
           pixel.y() < height);
 }
 
-Vec3 ConvertToImageCoordinate(const Vec3& point) {
-  Vec3 image_coordinate;
-  image_coordinate.x() = point.x() / point.z();
-  image_coordinate.y() = point.y() / point.z();
-  image_coordinate.z() = 1.0;
-  return image_coordinate;
-}
-
 Vec2 ProjectToPixelCoordinate(const Vec3& point, const double fx,
                               const double fy, const double cx,
                               const double cy) {
@@ -180,13 +172,13 @@ int main() {
   ceres::Solve(options, &ceres_problem, &summary);
   std::cerr << summary.FullReport() << std::endl;
 
-  std::cerr << "fx,fy,cx,cy : " << kFx << ", " << kFy << ", " << kCx << ", "
-            << kCy << std::endl;
-  std::cerr << "fx,fy,cx,cy : " << fx << ", " << fy << ", " << cx << ", " << cy
-            << std::endl;
+  std::cerr << "[True] fx,fy,cx,cy : " << kFx << ", " << kFy << ", " << kCx
+            << ", " << kCy << std::endl;
+  std::cerr << "[Est ] fx,fy,cx,cy : " << fx << ", " << fy << ", " << cx << ", "
+            << cy << std::endl;
 
-  std::cerr << "k1,k2: " << kK1 << ", " << kK2 << std::endl;
-  std::cerr << "k1,k2: " << k1 << ", " << k2 << std::endl;
+  std::cerr << "[True] k1,k2: " << kK1 << ", " << kK2 << std::endl;
+  std::cerr << "[Est ] k1,k2: " << k1 << ", " << k2 << std::endl;
 
   return 0;
 }
