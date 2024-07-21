@@ -18,7 +18,7 @@ struct Observation {
   Vec2 distorted_pixel{Vec2::Zero()};
 };
 
-struct Camera {
+struct CameraInfo {
   int id{-1};
   int image_height{-1};
   int image_width{-1};
@@ -26,12 +26,22 @@ struct Camera {
   double distortion_parameter[4] = {-1.0};  // k1 k2 p1 p2
   Pose extrinsic_pose{Pose::Identity()};
 };
-using CameraPtr = std::shared_ptr<Camera>;
+using CameraInfoPtr = std::shared_ptr<CameraInfo>;
 
 struct CameraFrame {
   int id{-1};
-  CameraPtr camera_ptr{nullptr};
+  CameraInfoPtr camera_info_ptr{nullptr};
   std::vector<Observation> observation_list;
+};
+
+struct LidarInfo {
+  Pose extrinsic_pose{Pose::Identity()};
+};
+using LidarInfoPtr = std::shared_ptr<LidarInfo>;
+struct LidarFrame {
+  int id{-1};
+  LidarInfoPtr lidar_info_ptr{nullptr};
+  std::vector<Vec3> plane_point_list;
 };
 
 struct Baselink {

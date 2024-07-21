@@ -52,7 +52,8 @@ Vec2 ProjectToDistortedPixel(const Vec3& point, const double fx,
   return distorted_pixel;
 }
 
-Vec2 ProjectToDistortedPixel(const Vec3& point, const CameraPtr& camera_ptr) {
+Vec2 ProjectToDistortedPixel(const Vec3& point,
+                             const CameraInfoPtr& camera_ptr) {
   if (camera_ptr == nullptr)
     throw std::invalid_argument("camera_ptr == nullptr");
 
